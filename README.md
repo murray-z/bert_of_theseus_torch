@@ -6,6 +6,7 @@
 
 # 使用
 - 配置文件config.py
+- 下载模型放在bert_config目录下
 - 數據預處理
   - python data_preprocess.py
 - 訓練模型
