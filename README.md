@@ -11,3 +11,6 @@
   - python data_preprocess.py
 - 訓練模型
   - python train.py
+
+# requirements
+- transformers=4.18.0
