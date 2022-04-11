@@ -12,14 +12,14 @@ vocab_path = "./bert_config/vocab.txt"
 best_predecessor_model_path = "./model/best_predecessor.pth"
 best_successor_model_path = "./model/best_successor.pth"
 best_theseus_model_path = "./model/best_theseus.pth"
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda:3" if torch.cuda.is_available() else "cpu"
 successor_layers = 3
 hidden_size = 768
-class_num = 8
-max_seq_len = 32
-batch_size = 32
-lr = 2e-5
-epochs = 3
+class_num = 7
+max_seq_len = 64
+batch_size = 128
+lr = 5e-5
+epochs = 10
 
 
 

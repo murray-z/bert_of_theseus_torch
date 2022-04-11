@@ -10,7 +10,7 @@ def preprocess_data():
             lis = line.strip().split()
             if len(lis) == 2:
                 labels.add(lis[1])
-    labels = ["<PAD>"] + list(labels)
+    labels = list(labels)
     label2idx = {l: i for i, l in enumerate(labels)}
     dump_json(label2idx, label2idx_path)
 

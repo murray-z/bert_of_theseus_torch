@@ -1,4 +1,6 @@
 # _*_ coding:utf-8 _*_
+import os
+
 import torch
 from torch.utils.data import DataLoader
 from transformers.optimization import AdamW
@@ -13,7 +15,7 @@ from seqeval.metrics import classification_report
 
 label2idx = load_json(label2idx_path)
 idx2label = {i: l for l, i in label2idx.items()}
-PAD_IDX = label2idx["<PAD>"]
+PAD_IDX = label2idx["O"]
 
 train_dataloader = DataLoader(TheseusDataSet(train_data_path), batch_size=batch_size, shuffle=True)
 dev_dataloader = DataLoader(TheseusDataSet(dev_data_path), batch_size=batch_size, shuffle=False)
@@ -31,6 +33,7 @@ def calculate(true_labels, pred_labels):
 
 def dev(model, data_loader, criterion):
     model.eval()
+    model.to(device)
     all_pred_tags = []
     all_true_tags = []
     all_loss = []
@@ -64,10 +67,19 @@ def train(model, model_save_path):
     # 开始训练
     print("Training ......")
     print(model)
+
+    if os.path.exists(model_save_path):
+        model.load_state_dict(torch.load(model_save_path), strict=False)
+
+    model.to(device)
+
+    weight = torch.tensor([10., 10., 10., 10., 1., 10., 10.], dtype=torch.float)
+
     # 优化器
     optimizer = AdamW(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
-    criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
+    criterion = nn.CrossEntropyLoss(weight=weight)
+    criterion.cuda(device=device)
 
     # 开始训练
     best_f1 = 0.
@@ -84,7 +96,7 @@ def train(model, model_save_path):
             loss.backward()
             optimizer.step()
 
-            if i % 100 == 0:
+            if i % 10 == 0:
                 flatten_pred_tags = flatten_pred_tags.cpu()
                 flatten_true_tags = flatten_true_tags.cpu()
                 flatten_pred_tags = torch.argmax(flatten_pred_tags, dim=1)
@@ -96,7 +108,7 @@ def train(model, model_save_path):
                 f1, acc, report = calculate(flatten_true_tags, flatten_pred_tags)
 
                 print("TRAIN STEP:{} F1:{} ACC:{} LOSS:{}".format(i, f1, acc, loss.item()))
-
+        scheduler.step()
         # 验证
         f1, acc, report, loss = dev(model, dev_dataloader, criterion)
         if f1 > best_f1:
@@ -106,7 +118,7 @@ def train(model, model_save_path):
         print("REPORT:\n{}".format(report))
 
     # 测试
-    model = model.load_state_dict(torch.load(model_save_path))
+    model.load_state_dict(torch.load(model_save_path), strict=False)
     f1, acc, report, loss = dev(model, test_dataloader, criterion)
     print("TEST F1:{} ACC:{} LOSS:{}".format(f1, acc, loss))
     print("REPORT:\n{}".format(report))
@@ -125,14 +137,14 @@ if __name__ == '__main__':
 
     # train theseus
     # 加载最优predecessor model
-    predecessor_model.load_state_dict(torch.load(best_predecessor_model_path))
+    predecessor_model.load_state_dict(torch.load(best_predecessor_model_path), strict=False)
     theseus_model = Theseus(predecessor_model, successor_model,
                             classification_layer=classification_layer)
     train(theseus_model, model_save_path=best_theseus_model_path)
 
     # fine-tuning successor model
     # 加载最优theseus model
-    theseus_model.load_state_dict(torch.load(best_theseus_model_path))
+    theseus_model.load_state_dict(torch.load(best_theseus_model_path), strict=False)
     train(theseus_model.successor, model_save_path=best_successor_model_path)
 
 
