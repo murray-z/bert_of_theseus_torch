@@ -19,8 +19,8 @@ device = "cuda:2" if torch.cuda.is_available() else "cpu"
 successor_layers = 3
 hidden_size = 768
 class_num = len(load_json(label2idx_path))
-max_seq_len = 64
-batch_size = 128
+max_seq_len = 32
+batch_size = 32
 lr = 2e-5
 epochs = 10
 

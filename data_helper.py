@@ -10,7 +10,7 @@ class TheseusDataSet(Dataset):
     def __init__(self, data_path):
         self.tokenizer = BertTokenizer(vocab_file=vocab_path)
         self.labl2idx = load_json(label2idx_path)
-        self.PAD_IDX = self.labl2idx["O"]
+        self.PAD_IDX = self.labl2idx["<PAD>"]
         sents = []
         labels = []
         with open(data_path, encoding="utf-8") as f:
