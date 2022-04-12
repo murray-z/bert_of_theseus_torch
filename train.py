@@ -68,18 +68,14 @@ def train(model, model_save_path):
     print("Training ......")
     print(model)
 
-    if os.path.exists(model_save_path):
-        model.load_state_dict(torch.load(model_save_path), strict=False)
-
     model.to(device)
-
-    weight = torch.tensor([10., 10., 10., 10., 1., 10., 10.], dtype=torch.float)
 
     # 优化器
     optimizer = AdamW(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
-    criterion = nn.CrossEntropyLoss(weight=weight)
-    criterion.cuda(device=device)
+    # cate_weight = torch.tensor([10., 10., 10., 10., 10., 10., 1.], dtype=torch.float)
+    # criterion = nn.CrossEntropyLoss(weight=cate_weight)
+    # criterion.to(device)
 
     # 开始训练
     best_f1 = 0.
@@ -90,7 +86,7 @@ def train(model, model_save_path):
             batch = [d.to(device) for d in batch]
             true_tags = batch[-1]
             pred_tags = model(*batch[:3])
-            flatten_pred_tags = pred_tags.view(-1, pred_tags.size()[2])
+            flatten_pred_tags = pred_tags.view(-1, class_num)
             flatten_true_tags = true_tags.view(-1)
             loss = criterion(flatten_pred_tags, flatten_true_tags)
             loss.backward()
@@ -105,10 +101,13 @@ def train(model, model_save_path):
                 flatten_pred_tags = [idx2label[id.item()] for id in flatten_pred_tags]
                 flatten_true_tags = [idx2label[id.item()] for id in flatten_true_tags]
 
+                for _ in range(100):
+                    print("{}\t{}".format(flatten_pred_tags[_], flatten_true_tags[_]))
+
                 f1, acc, report = calculate(flatten_true_tags, flatten_pred_tags)
 
                 print("TRAIN STEP:{} F1:{} ACC:{} LOSS:{}".format(i, f1, acc, loss.item()))
-        scheduler.step()
+        # scheduler.step()
         # 验证
         f1, acc, report, loss = dev(model, dev_dataloader, criterion)
         if f1 > best_f1:
@@ -125,27 +124,39 @@ def train(model, model_save_path):
 
 
 if __name__ == '__main__':
-    predecessor_model = Predecessor(config_path=predecessor_config_path,
-                                    pretrained_model_path=predecessor_model_path,
-                                    classification_layer=classification_layer)
+    from bert_of_theseus import Teacher
+    from copy import deepcopy
 
-    successor_model = Successor(config_path=successor_config_path,
-                                classification_layer=classification_layer)
+    model = Teacher()
 
-    # fine-tuning predecessor model
-    train(predecessor_model, model_save_path=best_predecessor_model_path)
+    # Initialize successor BERT weights
+    scc_n_layer = model.bert_model.encoder.scc_n_layer
+    model.bert_model.encoder.scc_layer = nn.ModuleList([deepcopy(model.bert_model.encoder.layer[ix])
+                                                       for ix in range(scc_n_layer)])
 
-    # train theseus
-    # 加载最优predecessor model
-    predecessor_model.load_state_dict(torch.load(best_predecessor_model_path), strict=False)
-    theseus_model = Theseus(predecessor_model, successor_model,
-                            classification_layer=classification_layer)
-    train(theseus_model, model_save_path=best_theseus_model_path)
+    train(model, "./model/best_weight.pth")
 
-    # fine-tuning successor model
-    # 加载最优theseus model
-    theseus_model.load_state_dict(torch.load(best_theseus_model_path), strict=False)
-    train(theseus_model.successor, model_save_path=best_successor_model_path)
+    # predecessor_model = Predecessor(config_path=predecessor_config_path,
+    #                                 pretrained_model_path=predecessor_model_path,
+    #                                 classification_layer=classification_layer)
+    #
+    # successor_model = Successor(config_path=successor_config_path,
+    #                             classification_layer=classification_layer)
+    #
+    # # fine-tuning predecessor model
+    # train(predecessor_model, model_save_path=best_predecessor_model_path)
+    #
+    # # train theseus
+    # # 加载最优predecessor model
+    # predecessor_model.load_state_dict(torch.load(best_predecessor_model_path), strict=False)
+    # theseus_model = Theseus(predecessor_model, successor_model,
+    #                         classification_layer=classification_layer)
+    # train(theseus_model, model_save_path=best_theseus_model_path)
+    #
+    # # fine-tuning successor model
+    # # 加载最优theseus model
+    # theseus_model.load_state_dict(torch.load(best_theseus_model_path), strict=False)
+    # train(theseus_model.successor, model_save_path=best_successor_model_path)
 
 
 

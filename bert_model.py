@@ -13,13 +13,14 @@ class Predecessor(nn.Module):
     def __init__(self, config_path, pretrained_model_path, classification_layer):
         super(Predecessor, self).__init__()
         self.config = BertConfig.from_json_file(config_path)
-        self.predecessor = BertModel.from_pretrained(pretrained_model_path,
-                                                     config=self.config)
+        self.bert = BertModel.from_pretrained(pretrained_model_path, config=self.config)
+        self.drop = nn.Dropout(self.config.hidden_dropout_prob)
         self.classification_layer = classification_layer
 
     def forward(self, input_ids, attention_mask, token_type_ids):
         outputs = self.predecessor(input_ids, attention_mask, token_type_ids)
-        logits = self.classification_layer(outputs[0])
+        hiddens = self.drop(outputs[0])
+        logits = self.classification_layer(hiddens)
         return logits
 
 
@@ -27,18 +28,19 @@ class Successor(nn.Module):
     def __init__(self, config_path, classification_layer):
         super(Successor, self).__init__()
         self.config = BertConfig.from_json_file(config_path)
-        self.successor = BertModel(config=self.config)
+        self.bert = BertModel(config=self.config)
+        self.drop = nn.Dropout(self.config.hidden_dropout_prob)
         self.classification_layer = classification_layer
 
     def forward(self, input_ids, attention_mask, token_type_ids):
-        outputs = self.successor(input_ids, attention_mask, token_type_ids)
-        logits = self.classification_layer(outputs[0])
+        outputs = self.bert(input_ids, attention_mask, token_type_ids)
+        hiddens = self.drop(outputs[0])
+        logits = self.classification_layer(hiddens)
         return logits
 
 
 class Theseus(nn.Module):
-    def __init__(self, predecessor_model, successor_model, classification_layer,
-                 replace_rate=0.5):
+    def __init__(self, predecessor_model, successor_model, classification_layer, replace_rate=0.5):
 
         super(Theseus, self).__init__()
 
@@ -49,8 +51,8 @@ class Theseus(nn.Module):
         self.layers_per_module = self.predecessor_num_hidden_layers // self.successor_num_hidden_layers
         self.predecessor = predecessor_model
         self.successor = successor_model
-        self.predecessor_bert_model = self.predecessor.predecessor
-        self.successor_bert_model = self.successor.successor
+        self.predecessor_bert_model = self.predecessor.bert
+        self.successor_bert_model = self.successor.bert
 
         # 冻结predecessor参数
         for param in predecessor_model.parameters():
@@ -91,3 +93,6 @@ class Theseus(nn.Module):
             outputs = self.successor_bert_model(input_ids, attention_mask, token_type_ids)
             logits = self.classification_layer(outputs[0])
             return logits
+
+
+

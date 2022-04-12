@@ -11,7 +11,10 @@ def preprocess_data():
             if len(lis) == 2:
                 labels.add(lis[1])
     labels = list(labels)
+    labels.extend(["<START>", "<STOP>"])
+    labels.sort()
     label2idx = {l: i for i, l in enumerate(labels)}
+    print("类别数:{}".format(len(label2idx)))
     dump_json(label2idx, label2idx_path)
 
 

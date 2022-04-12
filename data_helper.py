@@ -26,7 +26,7 @@ class TheseusDataSet(Dataset):
                 assert len(sent) == len(label)
                 sents.append(sent)
                 labels.append(label)
-
+        # print(texts[:5])
         self.input_ids, self.token_type_ids, self.attention_mask, self.tag_ids = self.encode(texts, labels)
 
         print("=====data_set:{}====".format(data_path))
@@ -70,4 +70,7 @@ class TheseusDataSet(Dataset):
 
 if __name__ == '__main__':
     data_set = TheseusDataSet("./data/dev.txt")
-    print(data_set.tag_ids[:10])
+    print(data_set.input_ids[:5])
+    print(data_set.token_type_ids[:5])
+    print(data_set.attention_mask[:5])
+    print(data_set.tag_ids[:5])
