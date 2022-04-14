@@ -10,24 +10,24 @@ class TheseusDataSet(Dataset):
     def __init__(self, data_path):
         self.tokenizer = BertTokenizer(vocab_file=vocab_path)
         self.labl2idx = load_json(label2idx_path)
-        self.PAD_IDX = self.labl2idx["<PAD>"]
+        self.PAD_IDX = self.labl2idx["O"]
         sents = []
         labels = []
         with open(data_path, encoding="utf-8") as f:
             texts = f.read().split("\n\n")
             for text in texts:
-                sent = ""
+                sent = []
                 label = []
                 for line in text.split("\n"):
                     lis = line.strip().split()
                     if len(lis) == 2:
-                        sent += lis[0]
+                        sent.append(lis[0])
                         label.append(lis[1])
                 assert len(sent) == len(label)
                 sents.append(sent)
                 labels.append(label)
-        # print(texts[:5])
-        self.input_ids, self.token_type_ids, self.attention_mask, self.tag_ids = self.encode(texts, labels)
+
+        self.input_ids, self.token_type_ids, self.attention_mask, self.tag_ids = self.encode(sents, labels)
 
         print("=====data_set:{}====".format(data_path))
         print("input_ids size: ", self.input_ids.size())
@@ -43,10 +43,10 @@ class TheseusDataSet(Dataset):
         return self.input_ids[idx], self.token_type_ids[idx],\
                self.attention_mask[idx], self.tag_ids[idx]
 
-    def encode(self, texts, tags):
+    def encode(self, sents, tags):
         input_ids, token_type_ids, attention_mask = [], [], []
-        for text in texts:
-            res = self.tokenizer.encode_plus(text,
+        for text in sents:
+            res = self.tokenizer.encode_plus(" ".join(text),
                                              add_special_tokens=True,
                                              max_length=max_seq_len,
                                              pad_to_max_length=True,
@@ -64,13 +64,7 @@ class TheseusDataSet(Dataset):
                 tmp_id = [self.PAD_IDX] + [self.labl2idx[t] for t in tag[:(max_seq_len - 2)]] + [self.PAD_IDX]
             tag_ids.append(tmp_id)
 
-        return torch.tensor(input_ids), torch.tensor(token_type_ids), \
-               torch.tensor(attention_mask), torch.tensor(tag_ids)
+        return torch.tensor(input_ids), torch.tensor(attention_mask), \
+               torch.tensor(token_type_ids), torch.tensor(tag_ids)
 
 
-if __name__ == '__main__':
-    data_set = TheseusDataSet("./data/dev.txt")
-    print(data_set.input_ids[:5])
-    print(data_set.token_type_ids[:5])
-    print(data_set.attention_mask[:5])
-    print(data_set.tag_ids[:5])

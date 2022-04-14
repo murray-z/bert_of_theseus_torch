@@ -2,19 +2,20 @@
 import os
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers.optimization import AdamW
-from bert_model import *
-from utils import *
 from config import *
 from data_helper import TheseusDataSet
 from seqeval.metrics import accuracy_score
 from seqeval.metrics import f1_score
 from seqeval.metrics import classification_report
+from bert_of_theseus import Theseus
 
 
 label2idx = load_json(label2idx_path)
 idx2label = {i: l for l, i in label2idx.items()}
+PAD_IDX = label2idx["O"]
 
 train_dataloader = DataLoader(TheseusDataSet(train_data_path), batch_size=batch_size, shuffle=True)
 dev_dataloader = DataLoader(TheseusDataSet(dev_data_path), batch_size=batch_size, shuffle=False)
@@ -30,7 +31,7 @@ def calculate(true_labels, pred_labels):
     return f1, acc, report
 
 
-def dev(model, data_loader):
+def dev(model, data_loader, criterion):
     model.eval()
     model.to(device)
     all_pred_tags = []
@@ -40,15 +41,16 @@ def dev(model, data_loader):
         for i, batch in enumerate(data_loader):
             batch = [d.to(device) for d in batch]
             true_tags = batch[-1]
-            loss, pred_tags = model(*batch)
-
+            pred_tags = model(*batch[:3])
+            flatten_pred_tags = pred_tags.view(-1, pred_tags.size()[2])
+            flatten_true_tags = true_tags.view(-1)
+            loss = criterion(flatten_pred_tags, flatten_true_tags)
             all_loss.append(loss.item())
 
-            flatten_true_tags = true_tags.cpu().view(-1)
-            flatten_pred_tags = pred_tags.cpu().view(-1, pred_tags.size()[2])
+            flatten_pred_tags = flatten_pred_tags.cpu()
+            flatten_true_tags = flatten_true_tags.cpu()
             flatten_pred_tags = torch.argmax(flatten_pred_tags, dim=1)
 
-            # 类别id转成汉字
             flatten_pred_tags = [idx2label[id.item()] for id in flatten_pred_tags]
             flatten_true_tags = [idx2label[id.item()] for id in flatten_true_tags]
 
@@ -66,11 +68,16 @@ def train(model, model_save_path):
     print("Training ......")
     print(model)
 
+    if os.path.exists(model_save_path):
+        model.load_state_dict(torch.load(model_save_path))
+
     model.to(device)
 
     # 优化器
     optimizer = AdamW(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
+    criterion = nn.CrossEntropyLoss()
+
 
     # 开始训练
     best_f1 = 0.
@@ -80,30 +87,28 @@ def train(model, model_save_path):
             optimizer.zero_grad()
             batch = [d.to(device) for d in batch]
             true_tags = batch[-1]
-            loss, pred_tags = model(*batch)
+            pred_tags = model(*batch[:3])
+            flatten_pred_tags = pred_tags.view(-1, class_num)
+            flatten_true_tags = true_tags.view(-1)
+            loss = criterion(flatten_pred_tags, flatten_true_tags)
             loss.backward()
             optimizer.step()
 
-            if i % 20 == 0:
-
-                flatten_true_tags = true_tags.cpu().view(-1)
-                flatten_pred_tags = pred_tags.cpu().view(-1, pred_tags.size()[2])
+            if i % 10 == 0:
+                flatten_pred_tags = flatten_pred_tags.cpu()
+                flatten_true_tags = flatten_true_tags.cpu()
                 flatten_pred_tags = torch.argmax(flatten_pred_tags, dim=1)
-
 
                 # 类别id转成汉字
                 flatten_pred_tags = [idx2label[id.item()] for id in flatten_pred_tags]
                 flatten_true_tags = [idx2label[id.item()] for id in flatten_true_tags]
 
-                # for _ in range(100):
-                #     print("{}\t{}".format(flatten_pred_tags[_], flatten_true_tags[_]))
-
                 f1, acc, report = calculate(flatten_true_tags, flatten_pred_tags)
 
                 print("TRAIN STEP:{} F1:{} ACC:{} LOSS:{}".format(i, f1, acc, loss.item()))
-        # scheduler.step()
+        scheduler.step()
         # 验证
-        f1, acc, report, loss = dev(model, dev_dataloader)
+        f1, acc, report, loss = dev(model, dev_dataloader, criterion)
         if f1 > best_f1:
             best_f1 = f1
             torch.save(model.state_dict(), model_save_path)
@@ -112,23 +117,19 @@ def train(model, model_save_path):
 
     # 测试
     model.load_state_dict(torch.load(model_save_path), strict=False)
-    f1, acc, report, loss = dev(model, test_dataloader)
+    f1, acc, report, loss = dev(model, test_dataloader, criterion)
     print("TEST F1:{} ACC:{} LOSS:{}".format(f1, acc, loss))
     print("REPORT:\n{}".format(report))
 
 
 if __name__ == '__main__':
-    from bert_of_theseus import Teacher2
-    from copy import deepcopy
+    teacher = Theseus()
+    train(teacher, model_save_path=save_model_path)
 
-    model = Teacher2()
 
-    # Initialize successor BERT weights
-    scc_n_layer = model.bert_model.encoder.scc_n_layer
-    model.bert_model.encoder.scc_layer = nn.ModuleList([deepcopy(model.bert_model.encoder.layer[ix])
-                                                       for ix in range(scc_n_layer)])
 
-    train(model, "./model/best_weight.pth")
+
+
 
 
 

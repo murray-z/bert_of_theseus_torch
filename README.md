@@ -10,7 +10,7 @@
 - 數據預處理
   - python data_preprocess.py
 - 訓練模型
-  - python train.py
+  - python train_theseus.py
 
 # requirements
 - transformers=4.18.0

@@ -9,14 +9,12 @@ from transformers import BertModel, BertConfig
 from transformers import BertLayer
 from typing import Optional, Tuple, Union
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
-from config import device
+from config import *
 from utils import load_json
-from crf import CRF
-from crf2 import CRF as CRF2
 
 
 class BertEncoder(nn.Module):
-    def __init__(self, config, scc_n_layer=3):
+    def __init__(self, config, scc_n_layer=6):
         super().__init__()
         self.config = config
         self.prd_n_layer = config.num_hidden_layers
@@ -128,54 +126,20 @@ class BertEncoder(nn.Module):
         )
 
 
-class Teacher(nn.Module):
-    def __init__(self, config="./bert_config/config.json",
-                 pretrained_path="./bert_config/pytorch_model.bin",
-                 label2idx_path="./data/label2idx.json"):
-        super(Teacher, self).__init__()
+class Theseus(nn.Module):
+    def __init__(self, config=config_path,
+                 pretrained_path=model_path,
+                 label2idx_path=label2idx_path):
+        super(Theseus, self).__init__()
         self.label2idx = load_json(label2idx_path)
         self.num_cls = len(self.label2idx)
         self.bert_config = BertConfig.from_json_file(config)
         self.bert_model = BertModel(config=self.bert_config)
-        self.bert_model.encoder = BertEncoder(config=self.bert_config)
+        self.bert_model.encoder = BertEncoder(config=self.bert_config,
+                                              scc_n_layer=successor_layers)
         self.bert_model.from_pretrained(pretrained_path, config=self.bert_config)
-        # self.bert_model.load_state_dict(torch.load(pretrained_path), strict=False)
-        self.drop = nn.Dropout(self.bert_config.hidden_dropout_prob)
-        self.crf = CRF(self.bert_config.hidden_size, self.num_cls)
-
-    def __build_features(self, input_ids, attention_mask, token_type_ids):
-        outputs = self.bert_model(input_ids, attention_mask, token_type_ids)
-        outputs = self.drop(outputs[0])
-        return outputs
-
-    def loss(self, input_ids, attention_mask, token_type_ids, tags):
-        features = self.__build_features(input_ids, attention_mask, token_type_ids)
-        loss = self.crf.loss(features, tags, masks=attention_mask)
-        return loss
-
-    def forward(self, input_ids, attention_mask, token_type_ids):
-        # Get the emission scores from the BiLSTM
-        features = self.__build_features(input_ids, attention_mask, token_type_ids)
-        scores, tag_seq = self.crf(features, attention_mask)
-        return scores, tag_seq
-
-
-
-class Teacher2(nn.Module):
-    def __init__(self, config="./bert_config/config.json",
-                 pretrained_path="./bert_config/pytorch_model.bin",
-                 label2idx_path="./data/label2idx.json"):
-        super(Teacher2, self).__init__()
-        self.label2idx = load_json(label2idx_path)
-        self.num_cls = len(self.label2idx)
-        self.bert_config = BertConfig.from_json_file(config)
-        self.bert_model = BertModel(config=self.bert_config)
-        self.bert_model.encoder = BertEncoder(config=self.bert_config)
-        self.bert_model.from_pretrained(pretrained_path, config=self.bert_config)
-        # self.bert_model.load_state_dict(torch.load(pretrained_path), strict=False)
         self.drop = nn.Dropout(self.bert_config.hidden_dropout_prob)
         self.cls = nn.Linear(self.bert_config.hidden_size, self.num_cls)
-        self.crf = CRF2(self.num_cls, batch_first=True)
 
     def forward(self, input_ids, token_type_ids, attention_mask, labels=None):
         outputs = self.bert_model(input_ids=input_ids, attention_mask=attention_mask,
@@ -183,11 +147,7 @@ class Teacher2(nn.Module):
         sequence_outputs = outputs[0]
         sequence_outputs = self.drop(sequence_outputs)
         logits = self.cls(sequence_outputs)
-        outputs = (logits, )
-        if labels is not None:
-            loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            outputs = (-1 * loss, ) + outputs
-        return outputs
+        return logits
 
 
 
